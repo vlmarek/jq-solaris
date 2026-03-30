@@ -262,6 +262,56 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  solaris:
+    runs-on: ubuntu-latest
+    env:
+      SUFFIX: solaris-amd64
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v6
+        with:
+          submodules: true
+      - name: Build and test in Solaris VM
+        uses: vmactions/solaris-vm@v1
+        with:
+          release: 11.4-gcc
+          usesh: true
+          prepare: |
+            pkgutil -y -i autoconf automake libtool gmake
+          run: |
+            MAKE_BIN="/usr/gnu/bin/make"
+            autoreconf -i
+            ./configure \
+              --disable-docs \
+              --with-oniguruma=builtin \
+              --disable-shared \
+              --enable-static \
+              --enable-all-static \
+              CFLAGS="-O2 -pthread -fstack-protector-all"
+            "$MAKE_BIN" -j"$(getconf NPROCESSORS_ONLN || psrinfo -p)"
+            "$MAKE_BIN" check VERBOSE=yes
+            # There are some permission problems on the Solaris VM
+            git config --global --add safe.directory .
+            git diff --exit-code
+            file ./jq
+            cp ./jq jq-${{ env.SUFFIX }}
+      - name: Upload Test Logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-logs-${{ env.SUFFIX }}
+          retention-days: 7
+          path: |
+            test-suite.log
+            tests/*.log
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: jq-${{ env.SUFFIX }}
+          path: jq-${{ env.SUFFIX }}
+          if-no-files-found: error
+          retention-days: 7
+
   dist:
     runs-on: ubuntu-latest
     steps:
